@@ -1,5 +1,7 @@
 # Lead Enrichment & Qualification
 
+![cover](docs/thumbnail.png)
+
 Turn a raw **Data Axle / ReferenceUSA** export into **enriched, qualified, evidence-backed leads** — and push the good ones to **Airtable**, deduped.
 
 **▶️ Live demo:** https://lead-enrichment-hazel.vercel.app — **upload a Data Axle export** and watch each company get enriched + qualified live, or click **"run the sample export."**
@@ -9,6 +11,8 @@ Turn a raw **Data Axle / ReferenceUSA** export into **enriched, qualified, evide
 ![screenshot](docs/screenshot.png)
 
 ## Pipeline
+
+![workflow](docs/workflow.png)
 
 ```
 raw Data Axle CSV/XLSX
