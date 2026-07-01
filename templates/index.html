@@ -9,86 +9,158 @@
   <script>
     tailwind.config = { theme: { extend: { colors: {
       ink:"#0b0e14", panel:"#121620", edge:"#222838", brand:"#6366f1",
-      pass:"#22c55e", review:"#f59e0b", reject:"#ef4444" }}}}
+      pass:"#22c55e", review:"#f59e0b", reject:"#ef4444" },
+      keyframes:{ fadeup:{'0%':{opacity:0,transform:'translateY(6px)'},'100%':{opacity:1,transform:'translateY(0)'}} },
+      animation:{ fadeup:'fadeup .3s ease-out both' } }}}
   </script>
   <style>body{background:#0b0e14;background-image:radial-gradient(50rem 40rem at 100% -10%,rgba(99,102,241,.12),transparent 60%);}</style>
 </head>
 <body class="min-h-screen text-slate-200">
   <div class="mx-auto max-w-5xl px-5 py-8">
-    <header class="mb-6 flex items-start justify-between gap-4">
-      <div class="flex items-center gap-3">
-        <div class="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-brand to-emerald-400 text-white text-lg">
-          <i class="fa-solid fa-filter-circle-dollar"></i>
-        </div>
-        <div>
-          <h1 class="text-xl font-semibold text-white">Lead Enrichment &amp; Qualification</h1>
-          <p class="text-sm text-slate-400">Data Axle export → cleaned → web-enriched → qualified → Airtable · {{ total }} companies</p>
-        </div>
+    <header class="mb-6 flex items-center gap-3">
+      <div class="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-brand to-emerald-400 text-white text-lg">
+        <i class="fa-solid fa-filter-circle-dollar"></i>
       </div>
-      <div class="hidden gap-2 sm:flex">
-        <span class="rounded-lg bg-pass/15 px-3 py-1.5 text-sm font-semibold text-pass">{{ counts['Pass'] }} Pass</span>
-        <span class="rounded-lg bg-review/15 px-3 py-1.5 text-sm font-semibold text-review">{{ counts['Needs Review'] }} Review</span>
-        <span class="rounded-lg bg-reject/15 px-3 py-1.5 text-sm font-semibold text-reject">{{ counts['Reject'] }} Reject</span>
+      <div>
+        <h1 class="text-xl font-semibold text-white">Lead Enrichment &amp; Qualification</h1>
+        <p class="text-sm text-slate-400">Upload a Data Axle export → clean → web-enrich → qualify → Airtable</p>
       </div>
     </header>
 
-    <div class="space-y-4">
-      {% for r in results %}
-      {% set c = r.clean %}{% set e = r.enrichment %}{% set q = r.qualification %}
-      {% set color = 'pass' if q.status == 'Pass' else ('review' if q.status == 'Needs Review' else 'reject') %}
-      <div class="rounded-2xl border border-edge bg-panel/60 p-4">
+    <!-- Upload -->
+    <section id="uploader" class="rounded-2xl border border-edge bg-panel/60 p-4">
+      <label id="drop" class="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-edge bg-ink/40 px-4 py-8 text-center transition hover:border-brand/60">
+        <input id="file" type="file" accept=".csv,.xlsx,.xls" class="hidden" />
+        <i class="fa-solid fa-file-arrow-up text-2xl text-brand"></i>
+        <div class="mt-2 text-sm font-medium text-slate-200">Drop your Data Axle export (.xlsx / .csv) or click to upload</div>
+        <div class="text-xs text-slate-500">the system cleans it, enriches each company online, and qualifies it</div>
+      </label>
+      <div class="mt-3 text-center text-xs text-slate-500">
+        no file handy? <button id="sample" class="font-semibold text-brand hover:underline">run the sample export (10 companies)</button>
+      </div>
+    </section>
+
+    <!-- Progress -->
+    <section id="progress" class="mt-5 hidden rounded-2xl border border-edge bg-panel/60 p-4">
+      <div class="flex items-center justify-between text-sm">
+        <span id="progLabel" class="text-slate-300"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Starting…</span>
+        <span id="progCount" class="text-slate-400">0 / 0</span>
+      </div>
+      <div class="mt-2 h-2 w-full overflow-hidden rounded-full bg-edge">
+        <div id="progBar" class="h-full w-0 rounded-full bg-brand transition-all"></div>
+      </div>
+      <div id="tallies" class="mt-3 flex gap-2 text-xs">
+        <span class="rounded bg-pass/15 px-2 py-1 font-semibold text-pass"><span id="tPass">0</span> Pass</span>
+        <span class="rounded bg-review/15 px-2 py-1 font-semibold text-review"><span id="tReview">0</span> Review</span>
+        <span class="rounded bg-reject/15 px-2 py-1 font-semibold text-reject"><span id="tReject">0</span> Reject</span>
+        <span class="ml-auto rounded bg-edge px-2 py-1 text-slate-400" id="dest">→ Airtable (deduped)</span>
+      </div>
+    </section>
+
+    <div id="results" class="mt-5 space-y-4"></div>
+  </div>
+
+  <script>
+    const $ = (s) => document.querySelector(s);
+    const esc = (s) => (s ?? "—").toString().replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+    const money = (n) => n == null ? "—" : "$" + Number(n).toLocaleString();
+    const host = (u) => (u||"").replace(/^https?:\/\//,"").replace(/\/$/,"");
+    let tally = { Pass:0, "Needs Review":0, Reject:0 };
+
+    function resetUI() {
+      $("#results").innerHTML = ""; tally = { Pass:0,"Needs Review":0,Reject:0 };
+      $("#tPass").textContent=0; $("#tReview").textContent=0; $("#tReject").textContent=0;
+      $("#progress").classList.remove("hidden");
+      $("#progBar").style.width="0%"; $("#progCount").textContent="0 / 0";
+    }
+    function bump(status){
+      tally[status] = (tally[status]||0)+1;
+      $("#tPass").textContent=tally["Pass"]; $("#tReview").textContent=tally["Needs Review"]; $("#tReject").textContent=tally["Reject"];
+    }
+    function setProgress(i,total,label){
+      $("#progBar").style.width = (total? Math.round(i/total*100):0)+"%";
+      $("#progCount").textContent = `${i} / ${total}`;
+      $("#progLabel").innerHTML = label;
+    }
+    function finish(){ $("#progLabel").innerHTML = '<i class="fa-solid fa-circle-check text-pass mr-1"></i> Done'; }
+
+    function card(r){
+      const c=r.clean, e=r.enrichment, q=r.qualification;
+      const color = q.status==="Pass"?"pass":(q.status==="Needs Review"?"review":"reject");
+      const icon = color==="pass"?"fa-circle-check":(color==="review"?"fa-triangle-exclamation":"fa-circle-xmark");
+      const flags = (e.red_flags||[]).map(f=>`<span class="rounded bg-reject/10 px-2 py-0.5 text-[11px] font-medium text-reject"><i class="fa-solid fa-flag"></i> ${esc(f)}</span>`).join(" ");
+      const ev = (q.evidence_urls||[]).slice(0,4).map(u=>`<a href="${u}" target="_blank" class="text-brand hover:underline">${esc(host(u)).slice(0,38)}</a>`).join('<span class="text-slate-600"> · </span>');
+      const el = document.createElement("div");
+      el.className = "rounded-2xl border border-edge bg-panel/60 p-4 animate-fadeup";
+      el.innerHTML = `
         <div class="flex items-start justify-between gap-3">
           <div>
             <div class="flex items-center gap-2">
-              <span class="text-base font-semibold text-white">{{ c.company_name }}</span>
-              {% if e.website %}<a href="{{ e.website }}" target="_blank" class="text-xs text-brand hover:underline">{{ e.website|replace('https://','')|replace('http://','') }}</a>{% endif %}
+              <span class="text-base font-semibold text-white">${esc(c.company_name)}</span>
+              ${e.website?`<a href="${e.website}" target="_blank" class="text-xs text-brand hover:underline">${esc(host(e.website))}</a>`:""}
             </div>
-            <div class="text-xs text-slate-500">{{ c.city }}, {{ c.state }} · {{ c.industry or '—' }}
-              {% if c.revenue %}· ${{ '{:,.0f}'.format(c.revenue) }} rev{% endif %}
-              {% if c.employees %}· {{ c.employees }} emp{% endif %}</div>
+            <div class="text-xs text-slate-500">${esc(c.city)}, ${esc(c.state)} · ${esc(c.industry)}${c.revenue?` · ${money(c.revenue)} rev`:""}${c.employees?` · ${c.employees} emp`:""}</div>
           </div>
-          <div class="flex shrink-0 items-center gap-2">
-            <span class="rounded-full bg-{{ color }}/15 px-3 py-1 text-sm font-semibold text-{{ color }}">
-              <i class="fa-solid {{ 'fa-circle-check' if color=='pass' else ('fa-triangle-exclamation' if color=='review' else 'fa-circle-xmark') }}"></i>
-              {{ q.status }}
-            </span>
-          </div>
+          <span class="shrink-0 rounded-full bg-${color}/15 px-3 py-1 text-sm font-semibold text-${color}"><i class="fa-solid ${icon}"></i> ${esc(q.status)}</span>
         </div>
-
         <div class="mt-3 grid gap-3 sm:grid-cols-[1fr,auto]">
           <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-            <div><span class="text-slate-500">Owner:</span> {{ e.owner_name or '—' }}{% if e.owner_title %} <span class="text-slate-500">({{ e.owner_title }})</span>{% endif %}</div>
-            <div><span class="text-slate-500">Email:</span> {{ e.decision_maker_email or '—' }}</div>
-            <div class="truncate"><span class="text-slate-500">Company LI:</span> {% if e.company_linkedin %}<a href="{{ e.company_linkedin }}" target="_blank" class="text-brand hover:underline">link</a>{% else %}—{% endif %}</div>
-            <div class="truncate"><span class="text-slate-500">Owner LI:</span> {% if e.owner_linkedin %}<a href="{{ e.owner_linkedin }}" target="_blank" class="text-brand hover:underline">link</a>{% else %}—{% endif %}</div>
-            <div class="col-span-2"><span class="text-slate-500">Ownership:</span> {{ e.ownership_signal or '—' }}</div>
-            {% if e.services %}<div class="col-span-2"><span class="text-slate-500">Services:</span> {{ e.services }}</div>{% endif %}
+            <div><span class="text-slate-500">Owner:</span> ${esc(e.owner_name)}${e.owner_title?` <span class="text-slate-500">(${esc(e.owner_title)})</span>`:""}</div>
+            <div><span class="text-slate-500">Email:</span> ${esc(e.decision_maker_email)}</div>
+            <div class="truncate"><span class="text-slate-500">Company LI:</span> ${e.company_linkedin?`<a href="${e.company_linkedin}" target="_blank" class="text-brand hover:underline">link</a>`:"—"}</div>
+            <div class="truncate"><span class="text-slate-500">Owner LI:</span> ${e.owner_linkedin?`<a href="${e.owner_linkedin}" target="_blank" class="text-brand hover:underline">link</a>`:"—"}</div>
+            <div class="col-span-2"><span class="text-slate-500">Ownership:</span> ${esc(e.ownership_signal)}</div>
+            ${e.services?`<div class="col-span-2"><span class="text-slate-500">Services:</span> ${esc(e.services)}</div>`:""}
           </div>
-          <div class="flex flex-col items-end justify-start gap-1 text-right">
-            <div><span class="text-2xl font-bold text-white">{{ q.fit_score }}</span><span class="text-xs text-slate-500">/100 fit</span></div>
-            <div class="text-xs text-slate-400">{{ q.confidence }}% confidence</div>
-          </div>
+          <div class="text-right"><div><span class="text-2xl font-bold text-white">${q.fit_score}</span><span class="text-xs text-slate-500">/100 fit</span></div><div class="text-xs text-slate-400">${q.confidence}% confidence</div></div>
         </div>
+        ${flags?`<div class="mt-2 flex flex-wrap gap-1.5">${flags}</div>`:""}
+        <div class="mt-2 text-sm text-slate-300"><span class="text-slate-500">Reason:</span> ${esc(q.reasons)}</div>
+        ${(q.missing_data&&q.missing_data.length)?`<div class="mt-1 text-xs text-review">Missing: ${esc(q.missing_data.join(", "))}</div>`:""}
+        ${ev?`<div class="mt-2 text-xs"><span class="text-slate-500"><i class="fa-solid fa-link"></i> Evidence:</span> ${ev}</div>`:""}`;
+      $("#results").prepend(el);
+    }
 
-        {% if e.red_flags %}
-        <div class="mt-2 flex flex-wrap gap-1.5">
-          {% for f in e.red_flags %}<span class="rounded bg-reject/10 px-2 py-0.5 text-[11px] font-medium text-reject"><i class="fa-solid fa-flag"></i> {{ f }}</span>{% endfor %}
-        </div>{% endif %}
+    // ---- real upload → live SSE streaming ----
+    $("#file").addEventListener("change", (e)=>{ if(e.target.files[0]) uploadAndStream(e.target.files[0]); });
+    ["dragover","dragenter"].forEach(ev=>$("#drop").addEventListener(ev,e=>{e.preventDefault();$("#drop").classList.add("border-brand");}));
+    ["dragleave","drop"].forEach(ev=>$("#drop").addEventListener(ev,e=>{e.preventDefault();$("#drop").classList.remove("border-brand");}));
+    $("#drop").addEventListener("drop",e=>{ const f=e.dataTransfer.files[0]; if(f) uploadAndStream(f); });
 
-        <div class="mt-2 text-sm text-slate-300"><span class="text-slate-500">Reason:</span> {{ q.reasons }}</div>
+    async function uploadAndStream(file){
+      resetUI();
+      setProgress(0,0,'<i class="fa-solid fa-spinner fa-spin mr-1"></i> Uploading & cleaning…');
+      const fd = new FormData(); fd.append("file", file);
+      let meta;
+      try { meta = await (await fetch("/upload",{method:"POST",body:fd})).json(); }
+      catch(err){ setProgress(0,0,"Upload failed"); return; }
+      if(meta.error){ setProgress(0,0,esc(meta.error)); return; }
+      const es = new EventSource(`/stream/${meta.job}`);
+      es.addEventListener("start",ev=>{ const d=JSON.parse(ev.data); setProgress(0,d.total,'<i class="fa-solid fa-spinner fa-spin mr-1"></i> Enriching…'); });
+      es.onmessage = (ev)=>{
+        const d = JSON.parse(ev.data);
+        if(d.result){ card(d.result); bump(d.result.qualification.status);
+          setProgress(d.i,d.total,`<i class="fa-solid fa-spinner fa-spin mr-1"></i> Enriched <b>${esc(d.result.clean.company_name)}</b>`); }
+        else if(d.error){ setProgress(d.i,d.total,`Skipped ${esc(d.company)} (${esc(d.error)})`); }
+      };
+      es.addEventListener("done",()=>{ finish(); es.close(); });
+      es.onerror = ()=>{ es.close(); };
+    }
 
-        {% if q.missing_data %}<div class="mt-1 text-xs text-review">Missing: {{ q.missing_data|join(', ') }}</div>{% endif %}
-
-        {% if q.evidence_urls %}
-        <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-          <span class="text-slate-500"><i class="fa-solid fa-link"></i> Evidence:</span>
-          {% for u in q.evidence_urls[:4] %}<a href="{{ u }}" target="_blank" class="text-brand hover:underline">{{ u|replace('https://','')|replace('http://','')|truncate(38,true) }}</a>{% endfor %}
-        </div>{% endif %}
-      </div>
-      {% endfor %}
-    </div>
-
-    <p class="mt-6 text-center text-[11px] text-slate-600">Pass / Needs Review → main Airtable table · Reject → rejected log · deduped by record_id</p>
-  </div>
+    // ---- sample replay (instant, reliable, real data) ----
+    $("#sample").addEventListener("click", runSample);
+    async function runSample(){
+      resetUI();
+      const data = await (await fetch("/sample-data")).json();
+      setProgress(0,data.length,'<i class="fa-solid fa-spinner fa-spin mr-1"></i> Enriching…');
+      let i=0;
+      (function next(){
+        if(i>=data.length){ finish(); return; }
+        const r=data[i++]; card(r); bump(r.qualification.status);
+        setProgress(i,data.length,`<i class="fa-solid fa-spinner fa-spin mr-1"></i> Enriched <b>${esc(r.clean.company_name)}</b>`);
+        setTimeout(next, 650);
+      })();
+    }
+  </script>
 </body>
 </html>

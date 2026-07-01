@@ -1,6 +1,6 @@
 {
   "builds": [
-    { "src": "api/index.py", "use": "@vercel/python", "config": { "includeFiles": ["templates/**", "data/**", "app/**"] } }
+    { "src": "api/index.py", "use": "@vercel/python", "config": { "maxDuration": 60, "includeFiles": ["templates/**", "data/**", "app/**"] } }
   ],
   "routes": [{ "src": "/(.*)", "dest": "api/index.py" }]
 }

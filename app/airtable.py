@@ -13,11 +13,15 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import tempfile
 from typing import Dict, List
 
 from app.schema import LeadResult
 
-_DATA = pathlib.Path(__file__).parent.parent / "data"
+# Mock output goes to a writable dir (/tmp on serverless, else the data folder).
+_OUT = pathlib.Path(tempfile.gettempdir()) if os.getenv("VERCEL") else (
+    pathlib.Path(__file__).parent.parent / "data"
+)
 MAIN_TABLE = os.getenv("AIRTABLE_MAIN_TABLE", "Leads")
 REJECTED_TABLE = os.getenv("AIRTABLE_REJECTED_TABLE", "Rejected")
 
@@ -65,8 +69,8 @@ def _sync_local(main, rejected) -> Dict:
             existing[rec["record_id"]] = rec
         path.write_text(json.dumps(list(existing.values()), indent=2))
 
-    upsert_file(_DATA / "airtable_main.json", main)
-    upsert_file(_DATA / "airtable_rejected.json", rejected)
+    upsert_file(_OUT / "airtable_main.json", main)
+    upsert_file(_OUT / "airtable_rejected.json", rejected)
     return {"mode": "local-mock", "main": len(main), "rejected": len(rejected)}
 
 
