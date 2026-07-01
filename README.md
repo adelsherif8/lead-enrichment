@@ -46,7 +46,8 @@ raw Data Axle CSV/XLSX
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env      # add OPENAI_API_KEY
-python run.py             # cleans → enriches → qualifies → Airtable/local → data/results.json
+python run.py                          # runs on data/sample_leads.csv
+python run.py data/sample_leads.xlsx   # …or the Excel sample (auto-detected)
 uvicorn app.main:app --port 8010   # view results at http://localhost:8010
 ```
 
